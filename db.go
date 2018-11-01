@@ -71,7 +71,7 @@ func importJSON(jsonFile string) {
 	txn = db.NewTransaction(true)
 	dec := json.NewDecoder(&countingReader{r: f, size: fi.Size()})
 	readValue(dec, make([]byte, 0, 1024))
-	if err := txn.Commit(nil); err != nil {
+	if err := txn.Commit(); err != nil {
 		panic(err)
 	}
 }
@@ -147,7 +147,7 @@ func set(key, data []byte) {
 			panic(err)
 		}
 
-		if err := txn.Commit(nil); err != nil {
+		if err := txn.Commit(); err != nil {
 			panic(err)
 		}
 		txn = db.NewTransaction(true)
@@ -162,12 +162,14 @@ func query(ctx context.Context, w io.Writer, path string) {
 	if err := db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get([]byte(path))
 		if err == nil {
-			v, err := item.Value()
+			err := item.Value(func(val []byte) error {
+				w.Write(val)
+				w.Write([]byte("\n"))
+				return nil
+			})
 			if err != nil {
 				panic(err)
 			}
-			w.Write(v)
-			w.Write([]byte("\n"))
 			return nil
 		}
 		if err != badger.ErrKeyNotFound {
@@ -227,11 +229,13 @@ func query(ctx context.Context, w io.Writer, path string) {
 			w.Write([]byte(strconv.Quote(string(name))))
 			w.Write([]byte(":"))
 
-			v, err := item.Value()
+			err := item.Value(func(val []byte) error {
+				w.Write(val)
+				return nil
+			})
 			if err != nil {
 				panic(err)
 			}
-			w.Write(v)
 
 			firstChild = false
 			it.Next()
